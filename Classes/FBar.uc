@@ -17,6 +17,57 @@ var HUD MyHUD;
 
 //------------------------------------------------------------------------------
 
+function PostBeginPlay()
+{
+	Level.Game.RegisterDamageMutator(Self);
+}
+
+//------------------------------------------------------------------------------
+
+function MutatorTakeDamage(out int ActualDamage, Pawn Victim, Pawn InstigatedBy,
+	out Vector HitLocation, out Vector Momentum, name DamageType)
+{
+	local FBarInfo Info;
+
+	if (ScriptedPawn(Victim) != None && PlayerPawn(InstigatedBy) != None)
+	{
+		// A player hits a monster
+		foreach Victim.ChildActors(class'FBarInfo', Info)
+			break;
+		// If Victim has not yet a FBar instance, spawn one
+		if (Info == None)
+			Info = Spawn(class'FBarInfo', Victim);
+		if (Info != None)
+		{
+			Info.Target = Victim;
+			Info.InitialHealth = Victim.Health + ActualDamage;
+		}
+	}
+	if (NextDamageMutator != None)
+		NextDamageMutator.MutatorTakeDamage(ActualDamage, Victim, InstigatedBy,
+			HitLocation, Momentum, DamageType);
+}
+
+//------------------------------------------------------------------------------
+
+function ScoreKill(Pawn Killer, Pawn Other)
+{
+	local FBarInfo Info;
+
+	// Destroy FBarInfo if the killed pawn had one
+	if (Other != None)
+	{
+		foreach Other.ChildActors(class'FBarInfo', Info)
+			break;
+		if (Info != None)
+			Info.Destroy();
+	}
+	if (NextMutator != None)
+		NextMutator.ScoreKill(Killer, Other);
+}
+
+//------------------------------------------------------------------------------
+
 simulated function Tick(float DeltaTime)
 {
 	if (!bHUDMutator && Level.NetMode != NM_DedicatedServer)
@@ -28,6 +79,7 @@ simulated function Tick(float DeltaTime)
 simulated function PostRender(Canvas C)
 {
 	local Pawn P;
+	local FBarInfo Info;
 	local Vector Eyes;
 	
 	MyPlayer = C.Viewport.Actor;
@@ -41,7 +93,7 @@ simulated function PostRender(Canvas C)
 	
 	// Find Pawns and draw bars
 	//for (P = Level.PawnList; P != None; P = P.NextPawn)
-	foreach Allactors(class'Pawn', P)
+	foreach AllActors(class'Pawn', P)
 	{
 		// Ignore invisible Pawns
 		if (P == MyPlayer || P.health < 1 || P.bHidden)
@@ -50,13 +102,32 @@ simulated function PostRender(Canvas C)
 		// Ignore flocked Pawns (looks kinda silly :D)
 		if (FlockPawn(P) != None)
 			continue;
+
+		// Ignore monsters, they are treated separately
+		if (ScriptedPawn(P) != None)
+			continue;
 		
 		// Ignore non-visible Pawns
 		if (!FastTrace(Eyes, P.Location))
 			continue;
 		
 		// Draw bar
-		DrawBar(C, P);
+		DrawBar(C, P, None);
+	}
+
+	// Find monsters that have been damaged before and draw bars
+	foreach AllActors(class'FBarInfo', Info)
+	{
+		P = Info.Target;
+		if (P == None)
+			continue;
+
+		// Ignore non-visible Pawns
+		if (!FastTrace(Eyes, P.Location))
+			continue;
+
+		// Draw bar
+		DrawBar(C, P, Info);
 	}
 
 }
@@ -123,7 +194,7 @@ function int FetchArmorAmount(Pawn P)
 // Draw the status bar
 //------------------------------------------------------------------------------
 
-simulated function DrawBar(Canvas C, Pawn P)
+simulated function DrawBar(Canvas C, Pawn P, FBarInfo Info)
 {
 	local float X, Y;
 	local float factor;
