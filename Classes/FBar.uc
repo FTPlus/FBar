@@ -19,7 +19,6 @@ var color BlackColor, GreyColor, WhiteColor, RedColor, GreenColor, BlueColor,
 	YellowColor;
 var config int BarWidth;
 var config int BarHeight;
-var config int FontSize;
 
 //------------------------------------------------------------------------------
 
@@ -47,6 +46,7 @@ function MutatorTakeDamage(out int ActualDamage, Pawn Victim, Pawn InstigatedBy,
 		{
 			Info.Target = Victim;
 			Info.InitialHealth = Victim.Health + ActualDamage;
+			Info.bBoss = Info.InitialHealth > 1000;
 		}
 	}
 	if (NextDamageMutator != None)
@@ -180,7 +180,7 @@ simulated function bool MapToHUD(Canvas C, PlayerPawn Owner, Actor Target,
 // Gets current Armor level
 //------------------------------------------------------------------------------
 
-function int FetchArmorAmount(Pawn P)
+simulated function int FetchArmorAmount(Pawn P)
 {
 	local int Amount;
 	local Inventory Inv;
@@ -202,104 +202,98 @@ function int FetchArmorAmount(Pawn P)
 
 simulated function DrawBar(Canvas C, Pawn P, FBarInfo Info)
 {
-	local float X, Y;
-	local float factor;
-	local float ActualWidth;
+	local float X, Y, W, H, Size;
 	local float TW, TH;
 	local float DefaultHealth;
-	
-	// Get pawn on-screen position
-	if (!MapToHUD(C, MyPlayer, P, Vect(0,0,2) * MyPlayer.EyeHeight, X, Y))
-		return;
-	
-	Y -= BarHeight * 2;
+	local float Value;
+	local string Text;
 
-	// Set up font
-	if (FontSize == 1)
-		C.Font = C.MedFont;
-	else if (FontSize == 2)
-		C.Font = C.BigFont;
-	else if (FontSize == 3)
-		C.Font = C.LargeFont;
+	// Get pawn on-screen position
+	if (!MapToHUD(C, MyPlayer, P, Vect(0,0,1) * P.CollisionHeight, X, Y))
+		return;
+
+	// set up information
+	if (P.bIsPlayer)
+		Text = P.PlayerReplicationInfo.PlayerName;
 	else
+		Text = String(P.Name);
+	
+	if (Info != None)
+		DefaultHealth = Info.InitialHealth;
+	else
+		DefaultHealth = P.default.Health;
+
+	if (Info != None && Info.bBoss)
+	{
+		W = BarWidth * 4;
+		H = BarHeight * 2;
+		C.Font = C.LargeFont;
+		Text = Caps(Text);
+	}
+	else
+	{
+		W = BarWidth;
+		H = BarHeight;
 		C.Font = C.SmallFont;
-	C.TextSize("TEST", TW, TH);
+	}
+	Y -= 32;
+	C.TextSize(Text, TW, TH);
 
 	// Draw bar body
 	C.SetPos(X, Y);
 	C.DrawColor = GreyColor;
 	C.Style = ERenderStyle.STY_Translucent;
 	if (P.bIsPlayer)
-		C.DrawRect(texture'UTMenu.VScreenStatic', BarWidth, BarHeight * 2 - 2);
+		C.DrawRect(texture'UTMenu.VScreenStatic', W, H * 2 - 2);
 	else
-		C.DrawRect(texture'UTMenu.VScreenStatic', BarWidth, BarHeight);
+		C.DrawRect(texture'UTMenu.VScreenStatic', W, H);
 
 	// Draw Pawn Name
-	C.SetPos(X,Y - TH - 1);
+	C.SetPos(X, Y - TH - 1);
 	C.DrawColor = WhiteColor;
 	C.Style = ERenderStyle.STY_Normal;
-	if (P.bIsPlayer)
-		C.DrawText(P.PlayerReplicationInfo.PlayerName);
-	else
-		C.DrawText(P.Name);
-	
-	// Draw health bar
-	DefaultHealth = P.default.Health;
-	if (Info != None)
-		DefaultHealth = Info.InitialHealth;
+	C.DrawText(Text);
 
-	DrawHealthBar(C, X, Y, 1, float(P.health) / DefaultHealth);
-	// if P is a player (or bot) draw a double bar: health and armor
-	if (P.bIsPlayer)
-		DrawArmorBar(C, X, Y + BarHeight - 2, 1, float(FetchArmorAmount(P)) / 150.0);
-}
-
-function DrawHealthBar(Canvas C, float X, float Y, float Size, float Value)
-{
-	local float W;
-	local float H;
-
-	H = float(BarHeight - 4);
-	W = float(BarWidth - 8);
+	X += 4;
+	Y += 2;
 
 	// Draw Health bar base
+	Value = float(P.health) / DefaultHealth;
 	if (Value > 1.0)
 		C.DrawColor = GreenColor;
 	else
 		C.DrawColor = RedColor;
-	C.SetPos(X + 4, Y + 2);
-	C.DrawRect(texture'Botpack.Static1', W, BarHeight - 4);
+	C.SetPos(X, Y);
+	C.DrawRect(texture'Botpack.Static1', W - 8, H - 4);
 
 	// Draw health bar value
-	C.SetPos(X + 4, Y + 2);
+	C.SetPos(X, Y);
 	if (Value > 1.0)
 	{
 		Value -= 1.0;
 		if (Value > 1.0)
 			Value = 1.0;
 		C.DrawColor = BlueColor;
-		C.DrawRect(texture'Botpack.Static1', W * Value, BarHeight - 4);
+		C.DrawRect(texture'Botpack.Static1', (W - 8) * Value, H - 4);
 	}
 	else
 	{
 		C.DrawColor = GreenColor;
-		C.DrawRect(texture'Botpack.Static1', W * Value, BarHeight - 4);
+		C.DrawRect(texture'Botpack.Static1', (W - 8) * Value, H - 4);
 	}
-}
 
-function DrawArmorBar(Canvas C, float X, float Y, float Size, float Value)
-{
-	local float W;
-	local float H;
+	Y += H - 2;
 
-	H = float(BarHeight - 4);
-	W = float(BarWidth - 8);
-
-	C.SetPos(X + 4, Y + 2);
-	if (Value > 1.0)
-		Value = 1.0;
-	C.DrawColor = YellowColor;
-	C.DrawRect(texture'Botpack.Static1', W * Value, BarHeight - 4);
+	// if P is a player (or bot) draw a double bar: health and armor
+	if (P.bIsPlayer)
+	{
+		Value = float(FetchArmorAmount(P)) / 150.0;
+		C.SetPos(X, Y);
+		if (Value > 1.0)
+			Value = 1.0;
+		C.DrawColor = YellowColor;
+		C.DrawRect(texture'Botpack.Static1', (W - 8) * Value, H - 4);
+	}
 }
 
 //------------------------------------------------------------------------------
@@ -318,5 +312,4 @@ defaultproperties
 	YellowColor=(R=255,G=255)
 	BarWidth=64
 	BarHeight=8
-	FontSize=0
 }
