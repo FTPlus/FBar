@@ -12,29 +12,8 @@
 
 class FBar extends Mutator;
 
-replication
-{
-	reliable if (Role == ROLE_Authority)
-		ArmorAmount;
-}
-
 var PlayerPawn MyPlayer;
 var HUD MyHUD;
-
-var byte ArmorAmount[32];
-
-var bool Initialized;
-
-//------------------------------------------------------------------------------
-
-function PostBeginPlay()
-{
-    if (Initialized)
-        return;
-    Initialized = True;
-
-    Level.Game.RegisterDamageMutator(Self);
-}
 
 //------------------------------------------------------------------------------
 
@@ -68,6 +47,10 @@ simulated function PostRender(Canvas C)
 		if (P == MyPlayer || P.health < 1 || P.bHidden)
 			continue;
 		
+		// Ignore flocked Pawns (looks kinda silly :D)
+		if (FlockPawn(P) != None)
+			continue;
+		
 		// Ignore non-visible Pawns
 		if (!FastTrace(Eyes, P.Location))
 			continue;
@@ -76,38 +59,6 @@ simulated function PostRender(Canvas C)
 		DrawBar(C, P);
 	}
 
-}
-
-//------------------------------------------------------------------------------
-
-function Timer()
-{
-	local Pawn P;
-	
-	for (P = Level.PawnList; P != None; P = P.NextPawn)
-		ArmorAmount[P.PlayerReplicationInfo.PlayerID] = FetchArmorAmount(P);
-	
-	//log("#"@Other.PlayerReplicationInfo.PlayerID@"="@ArmorAmount[Other.PlayerReplicationInfo.PlayerID]);
-}
-
-//------------------------------------------------------------------------------
-
-function bool HandlePickupQuery(Pawn Other, Inventory Item, out byte bAllowPickup)
-{
-	if (Other.bIsPlayer && Item.bIsAnArmor)
-		SetTimer(0.1, false);
-	
-	return (false);
-}
-
-//------------------------------------------------------------------------------
-
-function MutatorTakeDamage(out int ActualDamage, Pawn Victim, Pawn InstigatedBy, out Vector HitLocation, out Vector Momentum, name DamageType)
-{
-	SetTimer(0.1, false);
-	
-	if (NextDamageMutator != None)
-		NextDamageMutator.MutatorTakeDamage(ActualDamage, Victim, InstigatedBy, HitLocation, Momentum, DamageType);
 }
 
 //------------------------------------------------------------------------------
@@ -175,6 +126,7 @@ function int FetchArmorAmount(Pawn P)
 simulated function DrawBar(Canvas C, Pawn P)
 {
 	local float X, Y;
+	local float factor;
 	
 	// Get pawn on-screen position
 	if (!MapToHUD(C, MyPlayer, P, Vect(0,0,2) * MyPlayer.EyeHeight, X, Y))
@@ -202,6 +154,9 @@ simulated function DrawBar(Canvas C, Pawn P)
 	else
 		C.DrawText(P.Name);
 	
+	// Health calculation
+	factor = float(P.health) / P.default.health;
+	
 	// Draw Health bar
 	C.DrawColor.B = 0;
 	if (P.health > P.default.health)
@@ -223,29 +178,40 @@ simulated function DrawBar(Canvas C, Pawn P)
 	{
 		C.DrawColor.G = 0;
 		C.DrawColor.B = 255;
-		C.DrawRect(texture'Botpack.Static1', 56.0 * (float(P.health-P.default.health)/P.default.health), 4);
+		C.DrawRect(texture'Botpack.Static1', 56.0 * ((float(P.health)%P.default.health)/P.default.health), 4);
 	}
 	else
 	{
 		C.DrawColor.G = 255;
 		C.DrawColor.B = 0;
-		C.DrawRect(texture'Botpack.Static1', 56.0 * (float(P.health)/P.default.health), 4);
+		C.DrawRect(texture'Botpack.Static1', 56.0 * factor, 4);
 	}
 	
-	// Draw Armor bar, or healthcount
+	// Draw Armor bar, or logaritmic healthbar
 	if (P.bIsPlayer)
 	{
 		C.DrawColor.R = 255;
 		C.DrawColor.G = 255;
 		C.DrawColor.B = 0;
 		C.SetPos(X + 4, Y + 10);
-		C.DrawRect(texture'Botpack.Static1', 56.0 * (ArmorAmount[P.PlayerReplicationInfo.PlayerID]/150.0), 4);
+		C.DrawRect(texture'Botpack.Static1', 56.0 * (FetchArmorAmount(P)/150.0), 4);
 	}
 	else
 	{
-		C.DrawColor = C.DrawColor * 0;
-		C.SetPos(X + 4, Y + 7);
-		C.DrawText(P.health);
+		if (factor < 11)
+		{
+			C.DrawColor.R = 255;
+			C.DrawColor.G = 255;
+			C.DrawColor.B = 0;
+			C.SetPos(X + 4, Y + 10);
+			C.DrawRect(texture'Botpack.Static1', 5.6 * (int(factor) - 1), 4);
+		}
+		else
+		{
+			C.DrawColor = C.DrawColor * 0;
+			C.SetPos(X + 4, Y + 7);
+			C.DrawText(int(factor));
+		}
 	}
 }
 
