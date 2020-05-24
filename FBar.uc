@@ -1,31 +1,120 @@
 //==============================================================================
 // FTPlus Bar Mutator
 //
+// Author: Ferry "FTPlus" Timmers
+// Date: 13-10-2007 22:11
+//
+// Desc: This Mutator draws status bars above players citing their name,
+//       and their current health and armor status. This Mutator also works
+//       for Monsters with, for instance, MonsterHunt.
+//
 //==============================================================================
 
-class FBarMutator extends Mutator;
+class FBar extends Mutator;
 
-var        bool       bInitialized;
-var        FBar  Bars[10];
+replication
+{
+	reliable if (Role == ROLE_Authority)
+		ArmorAmount;
+}
 
-var        PlayerPawn MyPlayer;
-var        HUD        MyHUD;
+var PlayerPawn MyPlayer;
+var HUD MyHUD;
+
+var byte ArmorAmount[32];
+
+var bool Initialized;
+
+//------------------------------------------------------------------------------
+
+function PostBeginPlay()
+{
+    if (Initialized)
+        return;
+    Initialized = True;
+
+    Level.Game.RegisterDamageMutator(Self);
+}
+
+//------------------------------------------------------------------------------
 
 simulated function Tick(float DeltaTime)
 {
+	if (!bHUDMutator && Level.NetMode != NM_DedicatedServer)
+		RegisterHUDMutator();
+}
 
-	if(bInitialized || Level.NetMode == NM_DedicatedServer) return;
+//------------------------------------------------------------------------------
+
+simulated function PostRender(Canvas C)
+{
+	local Pawn P;
+	local Vector Eyes;
 	
-    if ( !bHUDMutator && Level.NetMode != NM_DedicatedServer )
-        RegisterHUDMutator();
+	MyPlayer = C.Viewport.Actor;
+	if ( MyPlayer != None )
+		MyHUD = MyPlayer.myHUD;
+	
+	if ( NextHUDMutator != None )
+		NextHUDMutator.PostRender(C);
+	
+	Eyes = MyPlayer.Location + Vect(0,0,1) * MyPlayer.EyeHeight;
+	
+	// Find Pawns and draw bars
+	//for (P = Level.PawnList; P != None; P = P.NextPawn)
+	foreach Allactors(class'Pawn', P)
+	{
+		// Ignore invisible Pawns
+		if (P == MyPlayer || P.health < 1 || P.bHidden)
+			continue;
 		
-	bInitialized = bHUDMutator;
+		// Ignore non-visible Pawns
+		if (!FastTrace(Eyes, P.Location))
+			continue;
+		
+		// Draw bar
+		DrawBar(C, P);
+	}
+
+}
+
+//------------------------------------------------------------------------------
+
+function Timer()
+{
+	local Pawn P;
+	
+	for (P = Level.PawnList; P != None; P = P.NextPawn)
+		ArmorAmount[P.PlayerReplicationInfo.PlayerID] = FetchArmorAmount(P);
+	
+	//log("#"@Other.PlayerReplicationInfo.PlayerID@"="@ArmorAmount[Other.PlayerReplicationInfo.PlayerID]);
+}
+
+//------------------------------------------------------------------------------
+
+function bool HandlePickupQuery(Pawn Other, Inventory Item, out byte bAllowPickup)
+{
+	if (Other.bIsPlayer && Item.bIsAnArmor)
+		SetTimer(0.1, false);
+	
+	return (false);
+}
+
+//------------------------------------------------------------------------------
+
+function MutatorTakeDamage(out int ActualDamage, Pawn Victim, Pawn InstigatedBy, out Vector HitLocation, out Vector Momentum, name DamageType)
+{
+	SetTimer(0.1, false);
+	
+	if (NextDamageMutator != None)
+		NextDamageMutator.MutatorTakeDamage(ActualDamage, Victim, InstigatedBy, HitLocation, Momentum, DamageType);
 }
 
 //------------------------------------------------------------------------------
 // Map to HUD was Created by Wormbo
 //------------------------------------------------------------------------------
-simulated function bool MapToHUD(Canvas C, PlayerPawn Owner, Actor Target, vector Offset, out float XX, out float YY)
+simulated function bool MapToHUD(Canvas C, PlayerPawn Owner, Actor Target,
+                                 vector Offset, out float XX, out float YY)
 {
 	local float TanFOVx, TanFOVy;
 	local float TanX, TanY;
@@ -59,14 +148,18 @@ simulated function bool MapToHUD(Canvas C, PlayerPawn Owner, Actor Target, vecto
 	        && YY == FClamp(YY, C.OrgY, C.ClipY));
 }
 
-function int FetchArmorAmount(pawn P)
+//------------------------------------------------------------------------------
+// Gets current Armor level
+//------------------------------------------------------------------------------
+
+function int FetchArmorAmount(Pawn P)
 {
 	local int Amount;
 	local Inventory Inv;
 	
 	Amount = 0;
 	
-	for( Inv=P.Inventory; Inv!=None; Inv=Inv.Inventory )
+	for (Inv = P.Inventory; Inv != None; Inv = Inv.Inventory)
 	{
 		if (Inv.bIsAnArmor)
 			Amount += Inv.Charge;
@@ -75,16 +168,21 @@ function int FetchArmorAmount(pawn P)
 	return (Min(Amount, 150));
 }
 
+//------------------------------------------------------------------------------
+// Draw the status bar
+//------------------------------------------------------------------------------
+
 simulated function DrawBar(Canvas C, Pawn P)
 {
 	local float X, Y;
 	
-	if (!MapToHUD(C, MyPlayer, P, Vect(0,0,2) * MyPlayer.EyeHeight, X, Y)
-	 || !FastTrace(P.Location, MyPlayer.Location + Vect(0,0,1) * MyPlayer.EyeHeight))
+	// Get pawn on-screen position
+	if (!MapToHUD(C, MyPlayer, P, Vect(0,0,2) * MyPlayer.EyeHeight, X, Y))
 		return;
 	
 	Y -= 32;
 	
+	// Draw bar body
 	C.SetPos(X, Y);
 	C.DrawColor.R = 127;
 	C.DrawColor.G = 127;
@@ -92,6 +190,7 @@ simulated function DrawBar(Canvas C, Pawn P)
 	C.Style = ERenderStyle.STY_Translucent;
 	C.DrawRect(texture'UTMenu.VScreenStatic', 64, 16);
 	
+	// Draw Pawn Name
 	C.SetPos(X,Y-9);
 	C.DrawColor.R = 255;
 	C.DrawColor.G = 255;
@@ -103,6 +202,7 @@ simulated function DrawBar(Canvas C, Pawn P)
 	else
 		C.DrawText(P.Name);
 	
+	// Draw Health bar
 	C.DrawColor.B = 0;
 	if (P.health > P.default.health)
 	{
@@ -119,7 +219,7 @@ simulated function DrawBar(Canvas C, Pawn P)
 
 	C.SetPos(X + 4, Y + 2);
 	C.DrawColor.R = 0;
-	if(P.health > P.default.health)
+	if (P.health > P.default.health)
 	{
 		C.DrawColor.G = 0;
 		C.DrawColor.B = 255;
@@ -132,50 +232,28 @@ simulated function DrawBar(Canvas C, Pawn P)
 		C.DrawRect(texture'Botpack.Static1', 56.0 * (float(P.health)/P.default.health), 4);
 	}
 	
-	C.DrawColor.R = 255;
-	C.DrawColor.G = 255;
-	C.DrawColor.B = 0;
-	C.SetPos(X + 4, Y + 10);
-	C.DrawRect(texture'Botpack.Static1', 56.0 * (FetchArmorAmount(P)/150.0), 4);
+	// Draw Armor bar, or healthcount
+	if (P.bIsPlayer)
+	{
+		C.DrawColor.R = 255;
+		C.DrawColor.G = 255;
+		C.DrawColor.B = 0;
+		C.SetPos(X + 4, Y + 10);
+		C.DrawRect(texture'Botpack.Static1', 56.0 * (ArmorAmount[P.PlayerReplicationInfo.PlayerID]/150.0), 4);
+	}
+	else
+	{
+		C.DrawColor = C.DrawColor * 0;
+		C.SetPos(X + 4, Y + 7);
+		C.DrawText(P.health);
+	}
 }
 
-simulated function DrawTwoColorID(canvas Canvas, string TitleString, string ValueString, int YStart )
+//------------------------------------------------------------------------------
+
+defaultproperties
 {
-	local float XL, YL, XOffset, X1;
-
-	Canvas.Style = Style;
-	Canvas.StrLen(TitleString$": ", XL, YL);
-	X1 = XL;
-	Canvas.StrLen(ValueString, XL, YL);
-	XOffset = Canvas.ClipX/2 - (X1+XL)/2;
-	Canvas.SetPos(XOffset, YStart);
-	XOffset += X1;
-	Canvas.DrawText(TitleString);
-	Canvas.SetPos(XOffset, YStart);
-	Canvas.DrawText(ValueString);
-	Canvas.DrawColor = MyHUD.WhiteColor;
-}
-
-simulated function PostRender(canvas C)
-{
-	local Pawn P;
-	
-	if(NextHUDMutator != none)
-		NextHUDMutator.postRender(c); 
-
-	if(MyHUD == none) 
-	{
-	    MyPlayer = c.Viewport.Actor;
-	    if ( MyPlayer != None )
-    	    MyHUD = MyPlayer.myHUD;		
-	}
-	
-	for (P = Level.PawnList; P != None; P = P.NextPawn)
-	{
-		if (P == MyPlayer || P.health < 1 || P.bHidden)
-			return;
-		
-		DrawBar(C, P);
-	}
-	
+	RemoteRole=ROLE_SimulatedProxy
+	bAlwaysRelevant=True
+	bNetTemporary=True
 }
