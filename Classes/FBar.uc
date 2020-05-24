@@ -10,13 +10,16 @@
 //
 //==============================================================================
 
-class FBar extends Mutator;
+class FBar extends Mutator config(user);
 
 var PlayerPawn MyPlayer;
 var HUD MyHUD;
 
 var color BlackColor, GreyColor, WhiteColor, RedColor, GreenColor, BlueColor,
 	YellowColor;
+var config int BarWidth;
+var config int BarHeight;
+var config int FontSize;
 
 //------------------------------------------------------------------------------
 
@@ -201,74 +204,102 @@ simulated function DrawBar(Canvas C, Pawn P, FBarInfo Info)
 {
 	local float X, Y;
 	local float factor;
+	local float ActualWidth;
+	local float TW, TH;
+	local float DefaultHealth;
 	
 	// Get pawn on-screen position
 	if (!MapToHUD(C, MyPlayer, P, Vect(0,0,2) * MyPlayer.EyeHeight, X, Y))
 		return;
 	
-	Y -= 32;
-	
+	Y -= BarHeight * 2;
+
+	// Set up font
+	if (FontSize == 1)
+		C.Font = C.MedFont;
+	else if (FontSize == 2)
+		C.Font = C.BigFont;
+	else if (FontSize == 3)
+		C.Font = C.LargeFont;
+	else
+		C.Font = C.SmallFont;
+	C.TextSize("TEST", TW, TH);
+
 	// Draw bar body
 	C.SetPos(X, Y);
 	C.DrawColor = GreyColor;
 	C.Style = ERenderStyle.STY_Translucent;
-	C.DrawRect(texture'UTMenu.VScreenStatic', 64, 16);
-	
+	if (P.bIsPlayer)
+		C.DrawRect(texture'UTMenu.VScreenStatic', BarWidth, BarHeight * 2 - 2);
+	else
+		C.DrawRect(texture'UTMenu.VScreenStatic', BarWidth, BarHeight);
+
 	// Draw Pawn Name
-	C.SetPos(X,Y-9);
+	C.SetPos(X,Y - TH - 1);
 	C.DrawColor = WhiteColor;
 	C.Style = ERenderStyle.STY_Normal;
-	C.Font = C.SmallFont;
 	if (P.bIsPlayer)
 		C.DrawText(P.PlayerReplicationInfo.PlayerName);
 	else
 		C.DrawText(P.Name);
 	
-	// Health calculation
-	factor = float(P.health) / P.default.health;
-	
-	// Draw Health bar
-	if (P.health > P.default.health)
+	// Draw health bar
+	DefaultHealth = P.default.Health;
+	if (Info != None)
+		DefaultHealth = Info.InitialHealth;
+
+	DrawHealthBar(C, X, Y, 1, float(P.health) / DefaultHealth);
+	// if P is a player (or bot) draw a double bar: health and armor
+	if (P.bIsPlayer)
+		DrawArmorBar(C, X, Y + BarHeight - 2, 1, float(FetchArmorAmount(P)) / 150.0);
+}
+
+function DrawHealthBar(Canvas C, float X, float Y, float Size, float Value)
+{
+	local float W;
+	local float H;
+
+	H = float(BarHeight - 4);
+	W = float(BarWidth - 8);
+
+	// Draw Health bar base
+	if (Value > 1.0)
 		C.DrawColor = GreenColor;
 	else
 		C.DrawColor = RedColor;
 	C.SetPos(X + 4, Y + 2);
-	C.DrawRect(texture'Botpack.Static1', 56, 4);
+	C.DrawRect(texture'Botpack.Static1', W, BarHeight - 4);
 
+	// Draw health bar value
 	C.SetPos(X + 4, Y + 2);
-	if (P.health > P.default.health)
+	if (Value > 1.0)
 	{
+		Value -= 1.0;
+		if (Value > 1.0)
+			Value = 1.0;
 		C.DrawColor = BlueColor;
-		C.DrawRect(texture'Botpack.Static1', 56.0 * ((float(P.health)%P.default.health)/P.default.health), 4);
+		C.DrawRect(texture'Botpack.Static1', W * Value, BarHeight - 4);
 	}
 	else
 	{
 		C.DrawColor = GreenColor;
-		C.DrawRect(texture'Botpack.Static1', 56.0 * factor, 4);
+		C.DrawRect(texture'Botpack.Static1', W * Value, BarHeight - 4);
 	}
-	
-	// Draw Armor bar, or logaritmic healthbar
-	if (P.bIsPlayer)
-	{
-		C.DrawColor = YellowColor;
-		C.SetPos(X + 4, Y + 10);
-		C.DrawRect(texture'Botpack.Static1', 56.0 * (FetchArmorAmount(P)/150.0), 4);
-	}
-	else
-	{
-		if (factor < 11)
-		{
-			C.DrawColor = YellowColor;
-			C.SetPos(X + 4, Y + 10);
-			C.DrawRect(texture'Botpack.Static1', 5.6 * (int(factor) - 1), 4);
-		}
-		else
-		{
-			C.DrawColor = BlackColor;
-			C.SetPos(X + 4, Y + 7);
-			C.DrawText(int(factor));
-		}
-	}
+}
+
+function DrawArmorBar(Canvas C, float X, float Y, float Size, float Value)
+{
+	local float W;
+	local float H;
+
+	H = float(BarHeight - 4);
+	W = float(BarWidth - 8);
+
+	C.SetPos(X + 4, Y + 2);
+	if (Value > 1.0)
+		Value = 1.0;
+	C.DrawColor = YellowColor;
+	C.DrawRect(texture'Botpack.Static1', W * Value, BarHeight - 4);
 }
 
 //------------------------------------------------------------------------------
@@ -285,4 +316,7 @@ defaultproperties
 	GreenColor=(G=255)
 	BlueColor=(B=255)
 	YellowColor=(R=255,G=255)
+	BarWidth=64
+	BarHeight=8
+	FontSize=0
 }
