@@ -15,6 +15,9 @@ class FBar extends Mutator;
 var PlayerPawn MyPlayer;
 var HUD MyHUD;
 
+var color BlackColor, GreyColor, WhiteColor, RedColor, GreenColor, BlueColor,
+	YellowColor;
+
 //------------------------------------------------------------------------------
 
 function PostBeginPlay()
@@ -207,17 +210,13 @@ simulated function DrawBar(Canvas C, Pawn P, FBarInfo Info)
 	
 	// Draw bar body
 	C.SetPos(X, Y);
-	C.DrawColor.R = 127;
-	C.DrawColor.G = 127;
-	C.DrawColor.B = 127;
+	C.DrawColor = GreyColor;
 	C.Style = ERenderStyle.STY_Translucent;
 	C.DrawRect(texture'UTMenu.VScreenStatic', 64, 16);
 	
 	// Draw Pawn Name
 	C.SetPos(X,Y-9);
-	C.DrawColor.R = 255;
-	C.DrawColor.G = 255;
-	C.DrawColor.B = 255;
+	C.DrawColor = WhiteColor;
 	C.Style = ERenderStyle.STY_Normal;
 	C.Font = C.SmallFont;
 	if (P.bIsPlayer)
@@ -229,41 +228,29 @@ simulated function DrawBar(Canvas C, Pawn P, FBarInfo Info)
 	factor = float(P.health) / P.default.health;
 	
 	// Draw Health bar
-	C.DrawColor.B = 0;
 	if (P.health > P.default.health)
-	{
-		C.DrawColor.R = 0;
-		C.DrawColor.G = 255;
-	}
+		C.DrawColor = GreenColor;
 	else
-	{
-		C.DrawColor.R = 255;
-		C.DrawColor.G = 0;
-	}
+		C.DrawColor = RedColor;
 	C.SetPos(X + 4, Y + 2);
 	C.DrawRect(texture'Botpack.Static1', 56, 4);
 
 	C.SetPos(X + 4, Y + 2);
-	C.DrawColor.R = 0;
 	if (P.health > P.default.health)
 	{
-		C.DrawColor.G = 0;
-		C.DrawColor.B = 255;
+		C.DrawColor = BlueColor;
 		C.DrawRect(texture'Botpack.Static1', 56.0 * ((float(P.health)%P.default.health)/P.default.health), 4);
 	}
 	else
 	{
-		C.DrawColor.G = 255;
-		C.DrawColor.B = 0;
+		C.DrawColor = GreenColor;
 		C.DrawRect(texture'Botpack.Static1', 56.0 * factor, 4);
 	}
 	
 	// Draw Armor bar, or logaritmic healthbar
 	if (P.bIsPlayer)
 	{
-		C.DrawColor.R = 255;
-		C.DrawColor.G = 255;
-		C.DrawColor.B = 0;
+		C.DrawColor = YellowColor;
 		C.SetPos(X + 4, Y + 10);
 		C.DrawRect(texture'Botpack.Static1', 56.0 * (FetchArmorAmount(P)/150.0), 4);
 	}
@@ -271,15 +258,13 @@ simulated function DrawBar(Canvas C, Pawn P, FBarInfo Info)
 	{
 		if (factor < 11)
 		{
-			C.DrawColor.R = 255;
-			C.DrawColor.G = 255;
-			C.DrawColor.B = 0;
+			C.DrawColor = YellowColor;
 			C.SetPos(X + 4, Y + 10);
 			C.DrawRect(texture'Botpack.Static1', 5.6 * (int(factor) - 1), 4);
 		}
 		else
 		{
-			C.DrawColor = C.DrawColor * 0;
+			C.DrawColor = BlackColor;
 			C.SetPos(X + 4, Y + 7);
 			C.DrawText(int(factor));
 		}
@@ -293,4 +278,11 @@ defaultproperties
 	RemoteRole=ROLE_SimulatedProxy
 	bAlwaysRelevant=True
 	bNetTemporary=True
+	BlackColor=()
+	GreyColor=(R=127,G=127,B=127)
+	WhiteColor=(R=255,G=255,B=255)
+	RedColor=(R=255)
+	GreenColor=(G=255)
+	BlueColor=(B=255)
+	YellowColor=(R=255,G=255)
 }
