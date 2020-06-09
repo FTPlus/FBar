@@ -19,6 +19,8 @@ var color BlackColor, GreyColor, WhiteColor, RedColor, GreenColor, BlueColor,
 	YellowColor;
 var config int BarWidth;
 var config int BarHeight;
+var config int BossHealth; // Initial health a scripted pawn should have to be
+// considered a boss.
 
 //------------------------------------------------------------------------------
 
@@ -34,19 +36,19 @@ function MutatorTakeDamage(out int ActualDamage, Pawn Victim, Pawn InstigatedBy,
 {
 	local FBarInfo Info;
 
-	if (ScriptedPawn(Victim) != None && PlayerPawn(InstigatedBy) != None)
+	if (ScriptedPawn(Victim) != None)
 	{
-		// A player hits a monster
+		// A monster was hit
 		foreach Victim.ChildActors(class'FBarInfo', Info)
 			break;
-		// If Victim has not yet a FBar instance, spawn one
+		// If Victim does not yet have a FBar instance, spawn one
 		if (Info == None)
 			Info = Spawn(class'FBarInfo', Victim);
 		if (Info != None)
 		{
-			Info.Target = Victim;
 			Info.InitialHealth = Victim.Health + ActualDamage;
-			Info.bBoss = Info.InitialHealth > 1000;
+			Info.bBoss = Info.InitialHealth > BossHealth
+				|| ScriptedPawn(Victim).bIsBoss;
 		}
 	}
 	if (NextDamageMutator != None)
@@ -96,9 +98,8 @@ simulated function PostRender(Canvas C)
 		NextHUDMutator.PostRender(C);
 	
 	Eyes = MyPlayer.Location + Vect(0,0,1) * MyPlayer.EyeHeight;
-	
+
 	// Find Pawns and draw bars
-	//for (P = Level.PawnList; P != None; P = P.NextPawn)
 	foreach AllActors(class'Pawn', P)
 	{
 		// Ignore invisible Pawns
@@ -124,7 +125,7 @@ simulated function PostRender(Canvas C)
 	// Find monsters that have been damaged before and draw bars
 	foreach AllActors(class'FBarInfo', Info)
 	{
-		P = Info.Target;
+		P = Pawn(Info.Owner);
 		if (P == None)
 			continue;
 
@@ -312,4 +313,5 @@ defaultproperties
 	YellowColor=(R=255,G=255)
 	BarWidth=64
 	BarHeight=8
+	BossHealth=1000
 }

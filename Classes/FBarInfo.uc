@@ -10,14 +10,13 @@
 
 class FBarInfo extends ReplicationInfo;
 
-var Pawn Target;       // The pawn this info object belongs to
 var int InitialHealth; // Health the target had before taking any damage
 var bool bBoss;        // The target is marked as a boss
 
 replication
 {
 	reliable if (bNetInitial && (Role == Role_Authority))
-		Target, InitialHealth, bBoss;
+		InitialHealth, bBoss;
 }
 
 defaultproperties
