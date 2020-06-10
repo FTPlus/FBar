@@ -49,8 +49,8 @@ function MutatorTakeDamage(out int ActualDamage, Pawn Victim, Pawn InstigatedBy,
 			if (Info != None)
 			{
 				Info.InitialHealth = Victim.Health + ActualDamage;
-				Info.bIsBoss = Info.InitialHealth > BossHealth
-					|| ScriptedPawn(Victim).bIsBoss;
+				Info.bIsBoss = Info.InitialHealth > BossHealth;
+					/*|| ScriptedPawn(Victim).bIsBoss;*/
 			}
 		}
 	}
@@ -60,7 +60,8 @@ function MutatorTakeDamage(out int ActualDamage, Pawn Victim, Pawn InstigatedBy,
 		foreach Victim.ChildActors(class'FBarInfo', Info)
 			break;
 
-		UpdateArmorAmount(Victim, Info, 0);
+		if (Info != None)
+			UpdateArmorAmount(Victim, Info, 0);
 	}
 	if (NextDamageMutator != None)
 		NextDamageMutator.MutatorTakeDamage(ActualDamage, Victim, InstigatedBy,
@@ -79,7 +80,8 @@ function bool HandlePickupQuery(Pawn Other, Inventory Item, out byte bAllowPicku
 		foreach Other.ChildActors(class'FBarInfo', Info)
 			break;
 
-		UpdateArmorAmount(Other, Info, Item.Charge);
+		if (Info != None)
+			UpdateArmorAmount(Other, Info, Item.Charge);
 	}
 	return Super.HandlePickupQuery(Other, Item, bAllowPickup);
 }
@@ -303,7 +305,7 @@ simulated function DrawBar(Canvas C, Pawn P, FBarInfo Info)
 		if (Value > 1.0)
 			Value = 1.0;
 		C.DrawColor = YellowColor;
-		C.DrawRect(texture'UTMenu.Static1', (W - 8) * Value, H - 4);
+		C.DrawRect(texture'Botpack.Static1', (W - 8) * Value, H - 4);
 	}
 }
 
@@ -320,7 +322,7 @@ defaultproperties
 	RedColor=(R=255)
 	GreenColor=(G=255)
 	BlueColor=(B=255)
-	YellowColor=(R=255,G=255)
+	YellowColor=(R=219,G=146)
 	BarWidth=64
 	BarHeight=8
 	BossHealth=1000

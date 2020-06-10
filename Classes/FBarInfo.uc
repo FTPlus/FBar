@@ -19,7 +19,7 @@ replication
 	reliable if (bNetInitial && (Role == Role_Authority))
 		InitialHealth, bIsBoss;
 	// Only propagate armor info for players (other than current player)
-	reliable if (Owner.bIsPawn && Pawn(Owner).bIsPlayer && !bNetOwner
+	reliable if (Pawn(Owner) != None && Pawn(Owner).bIsPlayer && !bNetOwner
 			&& (Role == Role_Authority))
 		ArmorAmount;
 }
