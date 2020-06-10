@@ -11,12 +11,17 @@
 class FBarInfo extends ReplicationInfo;
 
 var int InitialHealth; // Health the target had before taking any damage
-var bool bBoss;        // The target is marked as a boss
+var bool bIsBoss;      // The target is marked as a boss
+var int ArmorAmount;   // Amount of armor a player (or bot) has
 
 replication
 {
 	reliable if (bNetInitial && (Role == Role_Authority))
-		InitialHealth, bBoss;
+		InitialHealth, bIsBoss;
+	// Only propagate armor info for players (other than current player)
+	reliable if (Owner.bIsPawn && Pawn(Owner).bIsPlayer && !bNetOwner
+			&& (Role == Role_Authority))
+		ArmorAmount;
 }
 
 defaultproperties

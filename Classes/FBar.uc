@@ -27,6 +27,7 @@ var config int BossHealth; // Initial health a scripted pawn should have to be
 function PostBeginPlay()
 {
 	Level.Game.RegisterDamageMutator(Self);
+	Super.PostBeginPlay();
 }
 
 //------------------------------------------------------------------------------
@@ -43,13 +44,23 @@ function MutatorTakeDamage(out int ActualDamage, Pawn Victim, Pawn InstigatedBy,
 			break;
 		// If Victim does not yet have a FBar instance, spawn one
 		if (Info == None)
-			Info = Spawn(class'FBarInfo', Victim);
-		if (Info != None)
 		{
-			Info.InitialHealth = Victim.Health + ActualDamage;
-			Info.bBoss = Info.InitialHealth > BossHealth
-				|| ScriptedPawn(Victim).bIsBoss;
+			Info = Spawn(class'FBarInfo', Victim);
+			if (Info != None)
+			{
+				Info.InitialHealth = Victim.Health + ActualDamage;
+				Info.bIsBoss = Info.InitialHealth > BossHealth
+					|| ScriptedPawn(Victim).bIsBoss;
+			}
 		}
+	}
+	else if (Victim.bIsPlayer)
+	{
+		// A player (or bot) was hit
+		foreach Victim.ChildActors(class'FBarInfo', Info)
+			break;
+
+		UpdateArmorAmount(Victim, Info, 0);
 	}
 	if (NextDamageMutator != None)
 		NextDamageMutator.MutatorTakeDamage(ActualDamage, Victim, InstigatedBy,
@@ -58,20 +69,61 @@ function MutatorTakeDamage(out int ActualDamage, Pawn Victim, Pawn InstigatedBy,
 
 //------------------------------------------------------------------------------
 
-function ScoreKill(Pawn Killer, Pawn Other)
+function bool HandlePickupQuery(Pawn Other, Inventory Item, out byte bAllowPickup)
 {
 	local FBarInfo Info;
 
-	// Destroy FBarInfo if the killed pawn had one
-	if (Other != None)
+	if (Other.bIsPlayer && Item.bIsAnArmor)
 	{
+		// A player (or bot) picked up Armor
 		foreach Other.ChildActors(class'FBarInfo', Info)
 			break;
-		if (Info != None)
-			Info.Destroy();
+
+		UpdateArmorAmount(Other, Info, Item.Charge);
 	}
-	if (NextMutator != None)
-		NextMutator.ScoreKill(Killer, Other);
+	return Super.HandlePickupQuery(Other, Item, bAllowPickup);
+}
+
+//------------------------------------------------------------------------------
+
+function ModifyPlayer(Pawn Other)
+{
+	local FBarInfo Info;
+
+	Super.ModifyPlayer(Other);
+
+	// A player (or bot) spawned
+	foreach Other.ChildActors(class'FBarInfo', Info)
+		break;
+
+	// If the player does not yet have a FBar instance, spawn one
+	if (Info == None)
+	{
+		Info = Spawn(class'FBarInfo', Other);
+		if (Info != None)
+		{
+			Info.InitialHealth = Other.Health;
+			Info.bIsBoss = false;
+		}
+	}
+}
+
+//------------------------------------------------------------------------------
+// Updated the current Armor level of a Pawn in the associated FBarInfo
+//------------------------------------------------------------------------------
+
+function UpdateArmorAmount(Pawn Target, FBarInfo Info, int Amount)
+{
+	local Inventory Inv;
+
+	if (Info == None)
+		return;
+
+	for (Inv = Target.Inventory; Inv != None; Inv = Inv.Inventory)
+		if (Inv.bIsAnArmor)
+			Amount += Inv.Charge;
+
+	Info.ArmorAmount = Min(Amount, 150);
 }
 
 //------------------------------------------------------------------------------
@@ -100,33 +152,14 @@ simulated function PostRender(Canvas C)
 	Eyes = MyPlayer.Location + Vect(0,0,1) * MyPlayer.EyeHeight;
 
 	// Find Pawns and draw bars
-	foreach AllActors(class'Pawn', P)
-	{
-		// Ignore invisible Pawns
-		if (P == MyPlayer || P.health < 1 || P.bHidden)
-			continue;
-		
-		// Ignore flocked Pawns (looks kinda silly :D)
-		if (FlockPawn(P) != None)
-			continue;
-
-		// Ignore monsters, they are treated separately
-		if (ScriptedPawn(P) != None)
-			continue;
-		
-		// Ignore non-visible Pawns
-		if (!FastTrace(Eyes, P.Location))
-			continue;
-		
-		// Draw bar
-		DrawBar(C, P, None);
-	}
-
-	// Find monsters that have been damaged before and draw bars
 	foreach AllActors(class'FBarInfo', Info)
 	{
 		P = Pawn(Info.Owner);
 		if (P == None)
+			continue;
+
+		// Ignore invisible or already death Pawns
+		if (P == MyPlayer || P.health < 1 || P.bHidden)
 			continue;
 
 		// Ignore non-visible Pawns
@@ -142,6 +175,7 @@ simulated function PostRender(Canvas C)
 //------------------------------------------------------------------------------
 // Map to HUD was Created by Wormbo
 //------------------------------------------------------------------------------
+
 simulated function bool MapToHUD(Canvas C, PlayerPawn Owner, Actor Target,
                                  vector Offset, out float XX, out float YY)
 {
@@ -178,26 +212,6 @@ simulated function bool MapToHUD(Canvas C, PlayerPawn Owner, Actor Target,
 }
 
 //------------------------------------------------------------------------------
-// Gets current Armor level
-//------------------------------------------------------------------------------
-
-simulated function int FetchArmorAmount(Pawn P)
-{
-	local int Amount;
-	local Inventory Inv;
-	
-	Amount = 0;
-	
-	for (Inv = P.Inventory; Inv != None; Inv = Inv.Inventory)
-	{
-		if (Inv.bIsAnArmor)
-			Amount += Inv.Charge;
-	}
-	
-	return (Min(Amount, 150));
-}
-
-//------------------------------------------------------------------------------
 // Draw the status bar
 //------------------------------------------------------------------------------
 
@@ -205,7 +219,6 @@ simulated function DrawBar(Canvas C, Pawn P, FBarInfo Info)
 {
 	local float X, Y, W, H, Size;
 	local float TW, TH;
-	local float DefaultHealth;
 	local float Value;
 	local string Text;
 
@@ -218,14 +231,10 @@ simulated function DrawBar(Canvas C, Pawn P, FBarInfo Info)
 		Text = P.PlayerReplicationInfo.PlayerName;
 	else
 		Text = String(P.Name);
-	
-	if (Info != None)
-		DefaultHealth = Info.InitialHealth;
-	else
-		DefaultHealth = P.default.Health;
 
-	if (Info != None && Info.bBoss)
+	if (Info.bIsBoss)
 	{
+		// Draw large bar
 		W = BarWidth * 4;
 		H = BarHeight * 2;
 		C.Font = C.LargeFont;
@@ -233,6 +242,7 @@ simulated function DrawBar(Canvas C, Pawn P, FBarInfo Info)
 	}
 	else
 	{
+		// Draw small bar
 		W = BarWidth;
 		H = BarHeight;
 		C.Font = C.SmallFont;
@@ -259,7 +269,7 @@ simulated function DrawBar(Canvas C, Pawn P, FBarInfo Info)
 	Y += 2;
 
 	// Draw Health bar base
-	Value = float(P.health) / DefaultHealth;
+	Value = float(P.health) / Info.InitialHealth;
 	if (Value > 1.0)
 		C.DrawColor = GreenColor;
 	else
@@ -288,12 +298,12 @@ simulated function DrawBar(Canvas C, Pawn P, FBarInfo Info)
 	// if P is a player (or bot) draw a double bar: health and armor
 	if (P.bIsPlayer)
 	{
-		Value = float(FetchArmorAmount(P)) / 150.0;
+		Value = float(Info.ArmorAmount) / 150.0;
 		C.SetPos(X, Y);
 		if (Value > 1.0)
 			Value = 1.0;
 		C.DrawColor = YellowColor;
-		C.DrawRect(texture'Botpack.Static1', (W - 8) * Value, H - 4);
+		C.DrawRect(texture'UTMenu.Static1', (W - 8) * Value, H - 4);
 	}
 }
 
